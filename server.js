@@ -3,7 +3,7 @@ var app = express.createServer();
 
 var querystring = require('querystring');
 var uuid = require('node-uuid');
-var XMLHttpRequest = require('./xhr/XMLHttpRequest');
+var XMLHttpRequest = require('./XMLHttpRequest.js');
 
 var GLOBAL_window = {};
 
