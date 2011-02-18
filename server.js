@@ -466,5 +466,6 @@ function extractEntities(req, res, next) {
   }  
 }
 
-app.listen(80);
-console.log('node.JS running on http://localhost:80');
+var port = process.env.PORT || 8001;
+app.listen(port);
+console.log('node.JS running on http://localhost:' + port);
