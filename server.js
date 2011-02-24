@@ -113,6 +113,7 @@ function extractEntities(req, res, next) {
       	  if (xhr.status == 200) {
       	    var response = JSON.parse(xhr.responseText);      	    
             var entities = [];      	    
+            var uris = [];
             if (response.Error || !response.Resources) {
         		  if (!requestId) {
         		    sendEntityExtractionResults(entities);
@@ -124,16 +125,19 @@ function extractEntities(req, res, next) {
             var length1 = response.Resources.length;
             for (var i = 0; i < length1; i++) {
               var entity = response.Resources[i];              
-              var uri = {
-                uri: entity['@URI'],
-                source: 'spotlight'
-              };
-              entities.push({
-                name: entity['@surfaceForm'],
-                relevance: parseFloat(entity['@similarityScore']),
-                uris: [uri],
-                source: 'spotlight'
-              });                                        
+              if (uris.indexOf(entity['@URI']) === -1) {
+                uris.push(entity['@URI']);
+                var uri = {
+                  uri: entity['@URI'],
+                  source: 'spotlight'
+                };
+                entities.push({
+                  name: entity['@surfaceForm'],
+                  relevance: parseFloat(entity['@similarityScore']),
+                  uris: [uri],
+                  source: 'spotlight'
+                });                                        
+              }
             }      	    
       		  if (!requestId) {
       		    sendEntityExtractionResults(entities);
