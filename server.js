@@ -335,7 +335,9 @@ function extractEntities(req, res, next) {
             	    results = JSON.parse(results);
             	    results.entities = results2.entities;            	    
             	    var entities1 = [];
-                  var length1 = results.concepts.length;
+                  var length1 = results.concepts?
+                      results.concepts.length :
+                      0;
                   for (var i = 0; i < length1; i++) {
                     var concept = results.concepts[i];
                     var uris = [];
@@ -363,7 +365,9 @@ function extractEntities(req, res, next) {
                       });          
                     }
                   }
-                  length1 = results.entities.length;
+                  length1 = results.entities?
+                      results.entities.length :
+                      0;
                   var entities2 = [];
                   for (var i = 0; i < length1; i++) {
                     var entity = results.entities[i];
