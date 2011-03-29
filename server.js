@@ -72,7 +72,7 @@ function extractEntities(req, res, next) {
   
   var sendEntityExtractionResults = function(json) {
     res.header('Content-Type', 'application/json');
-    res.header('Access-Control-Allow-Origin', 'http://twitter.com');
+    res.header('Access-Control-Allow-Origin', '*');
     if (req.query.callback) {      
       res.send(req.query.callback + '(' + JSON.stringify(json) + ')');      
     } else {
