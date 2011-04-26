@@ -477,4 +477,4 @@ function extractEntities(req, res, next) {
 
 var port = process.env.PORT || 8001;
 app.listen(port);
-if (DEBUG) console.log('node.JS running on http://localhost:' + port);
+console.log('node.JS running on http://localhost:' + port);
