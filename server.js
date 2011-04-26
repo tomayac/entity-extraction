@@ -31,8 +31,14 @@ app.options(/^\/restdesc\/photos$/, optionsPhotos);
 
 app.post(/^\/restdesc\/photos$/, postPhotos);
 
+app.get(/^\/restdesc\/photos$/, getPhotos);
+
 function optionsPhotos(req, res, next) {
   res.send('OPTIONS');  
+}
+
+function getPhotos(req, res, next) {
+  res.send('GET');  
 }
 
 function postPhotos(req, res, next) {
