@@ -26,7 +26,7 @@ app.get(/^\/entity-extraction\/(.+)\/(.+)$/, extractEntities);
 app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 
 /* RESTdesc */
-
+/*
 app.options(/^\/restdesc\/photos$/, optionsPhotos);
 
 app.post(/^\/restdesc\/photos$/, postPhotos);
@@ -44,7 +44,7 @@ function getPhotos(req, res, next) {
 function postPhotos(req, res, next) {
   res.send('POST');  
 }
-
+*/
 /* RESTdesc */
 
 function extractEntities(req, res, next) {
