@@ -25,6 +25,22 @@ app.get(/^\/entity-extraction\/(.+)\/(.+)$/, extractEntities);
 
 app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 
+/* RESTdesc */
+
+app.options(/^\/restdesc\/photos$/, optionsPhotos);
+
+app.post(/^\/restdesc\/photos$/, postPhotos);
+
+function optionsPhotos(req, res, next) {
+  res.send('OPTIONS');  
+}
+
+function postPhotos(req, res, next) {
+  res.send('POST');  
+}
+
+/* RESTdesc */
+
 function extractEntities(req, res, next) {
   
   var mergeEntities = function(entities1, entities2) {
