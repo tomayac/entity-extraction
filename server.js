@@ -1,3 +1,4 @@
+var DEBUG = false;
 var express = require('express');
 var app = express.createServer();
 
@@ -88,7 +89,7 @@ function extractEntities(req, res, next) {
   }
   var pathname = require('url').parse(req.url).pathname;
   var service = pathname.replace(path, '$1');
-  console.log('extractEntities => Service: ' + service);
+  if (DEBUG) console.log('extractEntities => Service: ' + service);
   
   var services = {
     spotlight: function(requestId) {      
@@ -469,11 +470,11 @@ function extractEntities(req, res, next) {
   if (services[service]) {
     services[service]();
   } else {
-    console.log('Service "' + service + '" not found.');
+    if (DEBUG) console.log('Service "' + service + '" not found.');
     next();
   }  
 }
 
 var port = process.env.PORT || 8001;
 app.listen(port);
-console.log('node.JS running on http://localhost:' + port);
+if (DEBUG) console.log('node.JS running on http://localhost:' + port);
