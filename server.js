@@ -1,16 +1,17 @@
 var DEBUG = false;
 var express = require('express');
+var http = require('http');
 var app = express.createServer();
-
-var querystring = require('querystring');
 var uuid = require('node-uuid');
 var XMLHttpRequest = require('./XMLHttpRequest.js');
+
+var querystring = require('querystring');
 
 var GLOBAL_window = {};
 
 app.configure(function(){
   app.use(express.methodOverride());
-  app.use(express.bodyDecoder());
+  app.use(express.bodyParser());
 });
 
 app.configure('development', function(){
@@ -25,30 +26,7 @@ app.get(/^\/entity-extraction\/(.+)\/(.+)$/, extractEntities);
 
 app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 
-/* RESTdesc */
-/*
-app.options(/^\/restdesc\/photos$/, optionsPhotos);
-
-app.post(/^\/restdesc\/photos$/, postPhotos);
-
-app.get(/^\/restdesc\/photos$/, getPhotos);
-
-function optionsPhotos(req, res, next) {
-  res.send('OPTIONS');  
-}
-
-function getPhotos(req, res, next) {
-  res.send('GET');  
-}
-
-function postPhotos(req, res, next) {
-  res.send('POST');  
-}
-*/
-/* RESTdesc */
-
-function extractEntities(req, res, next) {
-  
+function extractEntities(req, res, next) {  
   var mergeEntities = function(entities1, entities2) {
     var entities = [];
     entities1.forEach(function(entity1) {
@@ -114,9 +92,8 @@ function extractEntities(req, res, next) {
   if (DEBUG) console.log('extractEntities => Service: ' + service);
   
   var services = {
-    spotlight: function(requestId) {      
-      var uri = 'http://spotlight.dbpedia.org/rest/annotate?';  
-      var text = req.body?
+    spotlight: function(requestId) {            
+      var text = req.body? 
           req.body.text:
           decodeURIComponent(pathname.replace(path, '$2'));
       while (text.split(/\s+/g).length < 25) {
@@ -128,55 +105,61 @@ function extractEntities(req, res, next) {
         text:	text
       };
       params = querystring.stringify(params);
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', uri + params, true);
-      xhr.setRequestHeader('Accept', 'application/json');      
-      xhr.onreadystatechange = function() {
-      	if (xhr.readyState == 4) {
-      	  if (xhr.status == 200) {
-      	    var response = JSON.parse(xhr.responseText);      	    
-            var entities = [];      	    
-            var uris = [];
-            if (response.Error || !response.Resources) {
-        		  if (!requestId) {
-        		    sendEntityExtractionResults(entities);
-      		    } else {    		      
-                GLOBAL_window[requestId]['spotlight'] = entities;
-      		    }      		      		                
-      		    return;  
+      var options = {
+        host: 'spotlight.dbpedia.org',
+        port: 80,
+        path: '/rest/annotate?' + params,
+        headers: {Accept: 'application/json'}     
+      };
+      console.log(options);
+
+      http.get(options, function(res) {        
+        var response = '';
+        res.on('data', function(chunk) {
+          response += chunk;
+        });
+        res.on('end', function() {
+          response = JSON.parse(response);
+          var entities = [];      	    
+          var uris = [];
+          if (response.Error || !response.Resources) {
+      		  if (!requestId) {
+      		    sendEntityExtractionResults(entities);
+    		    } else {    		      
+              GLOBAL_window[requestId]['spotlight'] = entities;
+    		    }      		      		                
+    		    return;  
+          }
+          var length1 = response.Resources.length;
+          for (var i = 0; i < length1; i++) {
+            var entity = response.Resources[i];              
+            if (uris.indexOf(entity['@URI']) === -1) {
+              uris.push(entity['@URI']);
+              var uri = {
+                uri: entity['@URI'],
+                source: 'spotlight'
+              };
+              entities.push({
+                name: entity['@surfaceForm'],
+                relevance: parseFloat(entity['@similarityScore']),
+                uris: [uri],
+                source: 'spotlight'
+              });                                        
             }
-            var length1 = response.Resources.length;
-            for (var i = 0; i < length1; i++) {
-              var entity = response.Resources[i];              
-              if (uris.indexOf(entity['@URI']) === -1) {
-                uris.push(entity['@URI']);
-                var uri = {
-                  uri: entity['@URI'],
-                  source: 'spotlight'
-                };
-                entities.push({
-                  name: entity['@surfaceForm'],
-                  relevance: parseFloat(entity['@similarityScore']),
-                  uris: [uri],
-                  source: 'spotlight'
-                });                                        
-              }
-            }      	    
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {    		      
-              GLOBAL_window[requestId]['spotlight'] = entities;
-    		    }      		  
-    		  } else {
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {    		      
-              GLOBAL_window[requestId]['spotlight'] = entities;
-    		    }      		      		    
-    		  }
-      	}
-      }  
-      xhr.send(null);      
+          }      	    
+    		  if (!requestId) {
+    		    sendEntityExtractionResults(entities);
+  		    } else {    		      
+            GLOBAL_window[requestId]['spotlight'] = entities;
+  		    }     
+  		  }); 		  
+      }).on('error', function(e) {
+  		  if (!requestId) {
+  		    sendEntityExtractionResults(entities);
+		    } else {    		      
+          GLOBAL_window[requestId]['spotlight'] = entities;
+		    }
+      });       
     },    
     zemanta: function(requestId) {      
       var license = '4eqem8kyjzvkz8d2ken3xprb';
@@ -499,4 +482,4 @@ function extractEntities(req, res, next) {
 
 var port = process.env.PORT || 8001;
 app.listen(port);
-console.log('node.JS running on http://localhost:' + port);
+console.log('node.JS running on ' + port);
