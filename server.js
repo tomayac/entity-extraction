@@ -111,7 +111,6 @@ function extractEntities(req, res, next) {
         path: '/rest/annotate?' + params,
         headers: {Accept: 'application/json'}     
       };
-      console.log(options);
 
       http.get(options, function(res) {        
         var response = '';
