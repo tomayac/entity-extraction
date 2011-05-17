@@ -11,7 +11,7 @@ var GLOBAL_window = {};
 
 app.configure(function(){
   app.use(express.methodOverride());
-  app.use(express.bodyParser());
+  // app.use(express.bodyParser());
 });
 
 app.configure('development', function(){
