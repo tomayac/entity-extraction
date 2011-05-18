@@ -91,7 +91,15 @@ function extractEntities(req, res, next) {
   var service = pathname.replace(path, '$1');
   if (DEBUG) console.log('extractEntities => Service: ' + service);
   
-  var services = {
+  function sendResults(requestId, entities, service) {
+    if (!requestId) {
+	    sendEntityExtractionResults(entities);
+    } else {    		      
+      GLOBAL_window[requestId][service] = entities;
+    }     
+  }
+  
+  var services = {    
     spotlight: function(requestId) {            
       var text = req.body? 
           req.body.text:
@@ -117,16 +125,16 @@ function extractEntities(req, res, next) {
         res.on('data', function(chunk) {
           response += chunk;
         });
+        if (!response) {
+          sendResults(requestId, [], 'spotlight');
+  		    return;  
+        }
         res.on('end', function() {
           response = JSON.parse(response);
           var entities = [];      	    
           var uris = [];
           if (response.Error || !response.Resources) {
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {    		      
-              GLOBAL_window[requestId]['spotlight'] = entities;
-    		    }      		      		                
+            sendResults(requestId, entities, 'spotlight');
     		    return;  
           }
           var length1 = response.Resources.length;
@@ -146,18 +154,10 @@ function extractEntities(req, res, next) {
               });                                        
             }
           }      	    
-    		  if (!requestId) {
-    		    sendEntityExtractionResults(entities);
-  		    } else {    		      
-            GLOBAL_window[requestId]['spotlight'] = entities;
-  		    }     
+          sendResults(requestId, entities, 'spotlight');
   		  }); 		  
       }).on('error', function(e) {
-  		  if (!requestId) {
-  		    sendEntityExtractionResults(entities);
-		    } else {    		      
-          GLOBAL_window[requestId]['spotlight'] = entities;
-		    }
+        sendResults(requestId, entities, 'spotlight');        
       });       
     },    
     zemanta: function(requestId) {      
