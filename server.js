@@ -157,7 +157,7 @@ function extractEntities(req, res, next) {
           sendResults(requestId, entities, 'spotlight');
   		  }); 		  
       }).on('error', function(e) {
-        sendResults(requestId, entities, 'spotlight');        
+        sendResults(requestId, [], 'spotlight');        
       });       
     },    
     zemanta: function(requestId) {      
@@ -211,6 +211,7 @@ function extractEntities(req, res, next) {
               GLOBAL_window[requestId]['zemanta'] = entities;
     		    }      		  
     		  } else {
+    		    var entities = [];
       		  if (!requestId) {
       		    sendEntityExtractionResults(entities);
     		    } else {    		      
@@ -425,6 +426,7 @@ function extractEntities(req, res, next) {
             xhr2.send(params);    
     		  } else {
       		  if (!requestId) {
+      		    var entities = [];
       		    sendEntityExtractionResults(entities);
     		    } else {
               GLOBAL_window[requestId]['alchemyapi'] = entities;
