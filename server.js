@@ -294,6 +294,7 @@ function extractEntities(req, res, next) {
               GLOBAL_window[requestId]['opencalais'] = entities;
     		    }      		  
     		  } else {
+    		    var entities = [];
       		  if (!requestId) {
       		    sendEntityExtractionResults(entities);
     		    } else {
@@ -411,6 +412,7 @@ function extractEntities(req, res, next) {
                     GLOBAL_window[requestId]['alchemyapi'] = entities;
           		    }
           		  } else {
+          		    var entities = [];
             		  if (!requestId) {
             		    sendEntityExtractionResults(entities);
           		    } else {
