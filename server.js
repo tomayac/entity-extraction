@@ -26,7 +26,7 @@ app.get(/^\/entity-extraction\/(.+)\/(.+)$/, extractEntities);
 
 app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 
-app.get('/video/:id', getVideoInfo);
+app.all('/video/:id', getVideoInfo);
 
 function getVideoInfo(req, res, next) {
   var videoId = req.params.id;
