@@ -58,6 +58,13 @@ function getVideoInfo(req, res, next) {
       for (var i = 0, len = parts.length; i < len; i++) {
         var part = parts[i];
         var keyValues = part.split(/=/);
+        if (keyValues[0] === 'status' && keyValues[1] === 'fail') {
+          var json = false;          
+          res.header('Content-Type', 'application/json');
+          res.header('Access-Control-Allow-Origin', '*');      
+          res.send(json);  
+          return;        
+        }        
         if (keyValues[0] === 'html5_fmt_map') {
           videoInfo = decodeURIComponent(keyValues[1]).replace(/\+/g, ' ');
           videoInfo = videoInfo.replace(/^\[/, '').replace(/\]$/, '');
