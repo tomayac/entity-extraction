@@ -127,8 +127,9 @@ function extractEntities(req, res, next) {
           response += chunk;
         });
         res.on('end', function() {
-          response = JSON.parse(response);
-          if (!response) {
+          try {
+            response = JSON.parse(response);
+          } catch(e) {
             sendResults(requestId, [], 'spotlight');
           }
           var entities = [];      	    
@@ -185,8 +186,9 @@ function extractEntities(req, res, next) {
           response += chunk;
         });
         res.on('end', function() {
-          response = JSON.parse(response);
-          if (!response) {
+          try {
+            response = JSON.parse(response);
+          } catch(e) {
             sendResults(requestId, [], 'zemanta');
           }          
           var entities = [];
@@ -264,8 +266,9 @@ function extractEntities(req, res, next) {
     	    if (response.indexOf('<Error') !== -1) {
     	      response = {};
     	    } else {
-    	      response = JSON.parse(response);
-    	      if (!response) {
+    	      try {
+    	        response = JSON.parse(response);
+  	        } catch(e) {
               sendResults(requestId, [], 'opencalais');
             }            
   	      }
@@ -342,12 +345,14 @@ function extractEntities(req, res, next) {
               response2 += chunk;
             });
             res2.on('end', function() {              
-        	    results2 = JSON.parse(response2);
-        	    if (!results2) {
+              try {
+        	      results2 = JSON.parse(response2);
+      	      } catch(e) {
                 sendResults(requestId, [], 'alchemyapi');
               }              
-        	    results = JSON.parse(results);
-        	    if (!results) {
+              try {
+        	      results = JSON.parse(results);
+      	      } catch(e) {
                 sendResults(requestId, [], 'alchemyapi');
               }                      	    
         	    results.entities = results2.entities;            	    
