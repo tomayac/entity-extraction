@@ -1,15 +1,16 @@
 var DEBUG = false;
-var express = require('express');
-var http = require('http');
-var app = express.createServer();
 
+var http = require('http');
 var querystring = require('querystring');
+
+var express = require('express');
+var app = express.createServer();
+app.use(express.bodyParser());
 
 var GLOBAL_requests = {};
 
 app.configure(function(){
   app.use(express.methodOverride());
-  app.use(express.bodyParser());
 });
 
 app.configure('development', function(){
