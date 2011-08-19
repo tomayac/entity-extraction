@@ -470,7 +470,6 @@ function extractEntities(req, res, next) {
       }, 500);
     }
   };
-
   if (services[service]) {
     services[service]();
   } else {
