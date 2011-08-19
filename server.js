@@ -5,7 +5,7 @@ var querystring = require('querystring');
 
 var express = require('express');
 var app = express.createServer();
-app.use(express.bodyParser());
+// app.use(express.bodyParser());
 
 var GLOBAL_requests = {};
 
