@@ -2,16 +2,14 @@ var DEBUG = false;
 var express = require('express');
 var http = require('http');
 var app = express.createServer();
-var uuid = require('node-uuid');
-var XMLHttpRequest = require('./XMLHttpRequest.js');
 
 var querystring = require('querystring');
 
-var GLOBAL_window = {};
+var GLOBAL_requests = {};
 
 app.configure(function(){
   app.use(express.methodOverride());
-  // app.use(express.bodyParser());
+  app.use(express.bodyParser());
 });
 
 app.configure('development', function(){
@@ -26,78 +24,8 @@ app.get(/^\/entity-extraction\/(.+)\/(.+)$/, extractEntities);
 
 app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 
-app.all('/video/:id', getVideoInfo);
-
-function getVideoInfo(req, res, next) {
-  var videoId = req.params.id;
-  if (!videoId) {
-    next('Invalid YouTube Video ID.');
-  }
-  var options = {
-    host: 'www.youtube.com',
-    port: 80,
-    path: '/get_video_info?video_id=' + videoId + '&html5=1&eurl=unknown&el=embedded&hl=en_US',
-    headers: {
-      'accept': '*/*',
-      'accept-charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-      'accept-encoding': 'gzip,deflate,sdch',
-      'accept-language': 'en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2',
-      'connection': 'keep-alive',
-      'referer': 'http://www.youtube.com/embed/dP15zlyra3c?html5=1',
-      'user-agent': 'Mozilla/5.0 (iPhone; U; CPU iPhone OS 4_1 like Mac OS X; en-us) AppleWebKit/532.9 (KHTML, like Gecko) Version/4.0.5 Mobile/8B117 Safari/6531.22.7'
-    }
-  };
-
-  http.get(options, function(videoRes) {
-    var videoInfo = '';
-    videoRes.on('data', function(chunk) {
-      videoInfo += chunk; 
-    });
-    videoRes.on('end', function() {
-      var parts = videoInfo.split(/&/);
-      for (var i = 0, len = parts.length; i < len; i++) {
-        var part = parts[i];
-        var keyValues = part.split(/=/);
-        if (keyValues[0] === 'status' && keyValues[1] === 'fail') {
-          var json = false;          
-          res.header('Content-Type', 'application/json');
-          res.header('Access-Control-Allow-Origin', '*');      
-          res.send(json);  
-          return;        
-        }        
-        if (keyValues[0] === 'html5_fmt_map') {
-          videoInfo = decodeURIComponent(keyValues[1]).replace(/\+/g, ' ');
-          videoInfo = videoInfo.replace(/^\[/, '').replace(/\]$/, '');
-          break;
-        }
-      }
-      parts = videoInfo.split(/\},/);
-      var json = '[{';
-      for (var i = 0, len1 = parts.length; i < len1; i++) {
-        if (i < len1 - 1) {
-          parts[i] += '}';
-        }
-        var part = parts[i].replace(/^\{/, '').replace(/\}$/, '');
-        var keyValues = part.split(/'\,/);
-        for (var j = 0, len2 = keyValues.length; j < len2; j++) {        
-          var keyValue = keyValues[j].split(/':/);
-          json += j > 0? ',' : '';
-          json += keyValue[0].replace(/\s*'/g, '"') + '":' +
-              keyValue[1].replace(/^\s*'/, '"').replace(/="/g, '=\\"')
-              .replace(/"$/g, '\\"');
-          json += keyValue[0] !== ' \'itag'? '"' : '';
-        }
-        json += i < len1 - 1? '},' : '}';
-      }
-      json += ']';
-      res.header('Content-Type', 'application/json');
-      res.header('Access-Control-Allow-Origin', '*');      
-      res.send(json);
-    });
-  });
-}
-
-function extractEntities(req, res, next) {  
+function extractEntities(req, res, next) {
+    
   var mergeEntities = function(entities1, entities2) {
     var entities = [];
     entities1.forEach(function(entity1) {
@@ -160,21 +88,22 @@ function extractEntities(req, res, next) {
   }
   var pathname = require('url').parse(req.url).pathname;
   var service = pathname.replace(path, '$1');
-  if (DEBUG) console.log('extractEntities => Service: ' + service);
+  if (DEBUG) console.log('extractEntities => Service: ' + service); 
   
   function sendResults(requestId, entities, service) {
     if (!requestId) {
 	    sendEntityExtractionResults(entities);
     } else {    		      
-      GLOBAL_window[requestId][service] = entities;
+      GLOBAL_requests[requestId][service] = entities;
     }     
   }
   
+  var text = req.body? 
+      req.body.text:
+      decodeURIComponent(pathname.replace(path, '$2'));  
+  
   var services = {    
     spotlight: function(requestId) {            
-      var text = req.body? 
-          req.body.text:
-          decodeURIComponent(pathname.replace(path, '$2'));
       while (text.split(/\s+/g).length < 25) {
         text = text + ' ' + text;
       }
@@ -196,10 +125,6 @@ function extractEntities(req, res, next) {
         res.on('data', function(chunk) {
           response += chunk;
         });
-        if (!response) {
-          sendResults(requestId, [], 'spotlight');
-  		    return;  
-        }
         res.on('end', function() {
           response = JSON.parse(response);
           var entities = [];      	    
@@ -233,10 +158,6 @@ function extractEntities(req, res, next) {
     },    
     zemanta: function(requestId) {      
       var license = '4eqem8kyjzvkz8d2ken3xprb';
-      var uri = 'http://api.zemanta.com/services/rest/0.0/';  
-      var text = req.body?
-          req.body.text:
-          decodeURIComponent(pathname.replace(path, '$2'));
       var params = {
         method: 'zemanta.suggest_markup',
         api_key:	license,
@@ -245,56 +166,58 @@ function extractEntities(req, res, next) {
         return_rdf_links: 1
       };
       params = querystring.stringify(params);
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', uri, true);
-      xhr.onreadystatechange = function() {
-      	if (xhr.readyState == 4) {
-      	  if (xhr.status == 200) {
-      	    var response = JSON.parse(xhr.responseText);      	    
-            var entities = [];
-            var length1 = response.markup.links.length;
-            for (var i = 0; i < length1; i++) {
-              var entity = response.markup.links[i];
-              var length2 = entity.target.length;
-              var uris = [];
-              for (var j = 0; j < length2; j++) {
-                if (entity.target[j].type === 'rdf') {
-                  entity.target[j].url =
-                      decodeURIComponent(entity.target[j].url);
-                  uris.push({
-                    uri: entity.target[j].url,
-                    source: 'zemanta'
-                  });
-                }
-              }
-              if (uris.length > 0) {
-                entities.push({
-                  name: entity.anchor,
-                  relevance: parseFloat(entity.confidence),
-                  uris: uris,
+      var options = {
+        host: 'api.zemanta.com',
+        method: 'POST',
+        port: 80,
+        path: '/services/rest/0.0/'
+      };
+      
+      var req = http.request(options, function(res) {        
+        var response = '';
+        res.on('data', function(chunk) {
+          response += chunk;
+        });
+        res.on('end', function() {
+          response = JSON.parse(response);
+          var entities = [];
+          var length1 = response.markup.links.length;
+          for (var i = 0; i < length1; i++) {
+            var entity = response.markup.links[i];
+            var length2 = entity.target.length;
+            var uris = [];
+            for (var j = 0; j < length2; j++) {
+              if (entity.target[j].type === 'rdf') {
+                entity.target[j].url =
+                    decodeURIComponent(entity.target[j].url);
+                uris.push({
+                  uri: entity.target[j].url,
                   source: 'zemanta'
-                });                          
+                });
               }
-            }      	    
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {    		      
-              GLOBAL_window[requestId]['zemanta'] = entities;
-    		    }      		  
-    		  } else {
-    		    var entities = [];
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {    		      
-              GLOBAL_window[requestId]['zemanta'] = entities;
-    		    }      		      		    
-    		  }
-      	}
-      }  
-      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-      xhr.setRequestHeader('Content-Length', params.length);
-      xhr.setRequestHeader('Connection', 'close');
-      xhr.send(params);      
+            }
+            if (uris.length > 0) {
+              entities.push({
+                name: entity.anchor,
+                relevance: parseFloat(entity.confidence),
+                uris: uris,
+                source: 'zemanta'
+              });                          
+            }
+          }      	    
+    		  if (!requestId) {
+    		    sendEntityExtractionResults(entities);
+  		    } else {    		      
+            GLOBAL_requests[requestId]['zemanta'] = entities;
+  		    }          
+          sendResults(requestId, entities, 'zemanta');
+  		  }); 		  
+      }).on('error', function(e) {
+        sendResults(requestId, [], 'zemanta');        
+      }); 
+      req.setHeader('Content-Length', params.length);
+      req.write(params);		  
+      req.end();
     },  
     opencalais: function(requestId) {
       var license = 'xxqm6vznsj42scny2tk5dvrv';
@@ -316,75 +239,67 @@ function extractEntities(req, res, next) {
                 'c:submitter="Thomas Steiner">' +
             '</c:userDirectives>' +                
           '</c:params>';
-      var uri = 'http://api.opencalais.com/enlighten/rest/';      
-      var text = req.body?
-          req.body.text:
-          decodeURIComponent(pathname.replace(path, '$2'));
       var params = {
           licenseID: license,
           content: text.replace(/%/g, '%25'),        
           paramsXML: paramsXml
       };
       params = querystring.stringify(params);
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', uri, true);
-      xhr.onreadystatechange = function() {
-      	if (xhr.readyState == 4) {
-      	  if (xhr.status == 200) {
-      	    var response;
-      	    if (xhr.responseText.indexOf('<Error') !== -1) {
-      	      response = {};
-      	    } else {
-      	      response = JSON.parse(xhr.responseText);
-    	      }
-            var entities = [];
-            for (key in response) {
-              if (key === 'doc') {
-                continue;
-              } else {
-                if (response[key]['_typeGroup'] === 'entities') {
-                  var name = response[key]['categoryName']?
-                      response[key]['categoryName'] :
-                      response[key]['name'];
-                  var uri = {
-                    uri: key,
-                    source: 'opencalais'
-                  };                      
-                  entities.push({
-                    name: name,
-                    relevance: parseFloat(response[key].relevance),
-                    uris: [uri],
-                    source: 'opencalais'
-                  }); 
-                }
-              }          
-            }
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {
-              GLOBAL_window[requestId]['opencalais'] = entities;
-    		    }      		  
-    		  } else {
-    		    var entities = [];
-      		  if (!requestId) {
-      		    sendEntityExtractionResults(entities);
-    		    } else {
-              GLOBAL_window[requestId]['opencalais'] = entities;
-    		    }      		      		    
-    		  }
-      	}
-      }  
-      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-      xhr.setRequestHeader('Content-Length', params.length);
-      xhr.setRequestHeader('Connection', 'close');
-      xhr.send(params);            
+      var options = {
+        host: 'api.opencalais.com',
+        method: 'POST',
+        port: 80,
+        path: '/enlighten/rest/'
+      };
+      
+      var req = http.request(options, function(res) {        
+        var response = '';
+        res.on('data', function(chunk) {
+          response += chunk;
+        });
+        res.on('end', function() {
+    	    if (response.indexOf('<Error') !== -1) {
+    	      response = {};
+    	    } else {
+    	      response = JSON.parse(response);
+  	      }
+          var entities = [];
+          for (key in response) {
+            if (key === 'doc') {
+              continue;
+            } else {
+              if (response[key]['_typeGroup'] === 'entities') {
+                var name = response[key]['categoryName']?
+                    response[key]['categoryName'] :
+                    response[key]['name'];
+                var uri = {
+                  uri: key,
+                  source: 'opencalais'
+                };                      
+                entities.push({
+                  name: name,
+                  relevance: parseFloat(response[key].relevance),
+                  uris: [uri],
+                  source: 'opencalais'
+                }); 
+              }
+            }          
+          }
+    		  if (!requestId) {
+    		    sendEntityExtractionResults(entities);
+  		    } else {
+            GLOBAL_requests[requestId]['opencalais'] = entities;
+  		    }      		  
+        });
+      }).on('error', function(e) {
+        sendResults(requestId, [], 'zemanta');        
+      }); 
+      req.setHeader('Content-Length', params.length);
+      req.write(params);		  
+      req.end();
     },   
     alchemyapi: function(requestId) {
       var license = '6075eba18cf6fedc3ad522703b22fac10c4440a7';
-      var uri = 'http://access.alchemyapi.com/';
-      var text = req.body?
-          req.body.text:
-          decodeURIComponent(pathname.replace(path, '$2'));
       var params = {
           apikey:	license,
           text:	text,
@@ -396,125 +311,134 @@ function extractEntities(req, res, next) {
           showSourceText: 0              
       };
       params = querystring.stringify(params);
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', uri + 'calls/text/TextGetRankedConcepts', true);
-      xhr.onreadystatechange = function() {
-      	if (xhr.readyState == 4) {
-      	  if (xhr.status == 200) {
-      	    var results = xhr.responseText;      	    
-            var xhr2 = new XMLHttpRequest();
-            xhr2.open(
-                'POST', uri + 'calls/text/TextGetRankedNamedEntities', true);
-            xhr2.onreadystatechange = function() {
-            	if (xhr2.readyState == 4) {
-            	  if (xhr2.status == 200) {
-            	    var results2 = xhr2.responseText;            	    
-            	    results2 = JSON.parse(results2);
-            	    results = JSON.parse(results);
-            	    results.entities = results2.entities;            	    
-            	    var entities1 = [];
-                  var length1 = results.concepts?
-                      results.concepts.length :
-                      0;
-                  for (var i = 0; i < length1; i++) {
-                    var concept = results.concepts[i];
-                    var uris = [];
-                    for (key in concept) {
-                      if ((key === 'text') ||
-                          (key === 'relevance') ||
-                          (key === 'name') ||
-                          (key === 'subType') ||
-                          (key === 'website') ||
-                          (key === 'geo')) {              
-                        continue;
-                      }
-                      concept[key] = decodeURIComponent(concept[key]);
-                      uris.push({
-                        uri: concept[key],
-                        source: 'alchemyapi'
-                      });
-                    }
-                    if (uris.length > 0) {
-                      entities1.push({
-                        name: concept.text,
-                        relevance: parseFloat(concept.relevance),
-                        uris: uris,
-                        source: 'alchemyapi'
-                      });          
-                    }
+      
+      var options = {
+        host: 'access.alchemyapi.com',
+        method: 'POST',
+        port: 80,
+        path: '/calls/text/TextGetRankedConcepts'
+      };
+      
+      var req = http.request(options, function(res) {        
+        var response = '';
+        res.on('data', function(chunk) {
+          response += chunk;
+        });
+        res.on('end', function() {
+    	    var results = response;      	    
+
+          var options2 = {
+            host: 'access.alchemyapi.com',
+            method: 'POST',
+            port: 80,
+            path: '/calls/text/TextGetRankedNamedEntities'
+          };
+
+          var req2 = http.request(options2, function(res2) {        
+            var response2 = '';
+            res2.on('data', function(chunk) {
+              response2 += chunk;
+            });
+            res2.on('end', function() {              
+        	    results2 = JSON.parse(response2);
+        	    results = JSON.parse(results);
+        	    results.entities = results2.entities;            	    
+        	    var entities1 = [];
+              var length1 = results.concepts?
+                  results.concepts.length :
+                  0;
+              for (var i = 0; i < length1; i++) {
+                var concept = results.concepts[i];
+                var uris = [];
+                for (key in concept) {
+                  if ((key === 'text') ||
+                      (key === 'relevance') ||
+                      (key === 'name') ||
+                      (key === 'subType') ||
+                      (key === 'website') ||
+                      (key === 'geo')) {              
+                    continue;
                   }
-                  length1 = results.entities?
-                      results.entities.length :
-                      0;
-                  var entities2 = [];
-                  for (var i = 0; i < length1; i++) {
-                    var entity = results.entities[i];
-                    var uris = [];
-                    if (!entity.hasOwnProperty('disambiguated')) {
-                      continue;
-                    }
-                    for (key in entity.disambiguated) {
-                      if ((key === 'name') ||
-                          (key === 'subType') ||
-                          (key === 'website') ||
-                          (key === 'geo')) {
-                        continue;
-                      }            
-                      entity.disambiguated[key] =
-                          decodeURIComponent(entity.disambiguated[key]);
-                      uris.push({
-                        uri: entity.disambiguated[key],
-                        source: 'alchemyapi'
-                      });            
-                    }
-                    if (uris.length > 0) {
-                      entities2.push({
-                        name: entity.text,
-                        relevance: parseFloat(entity.relevance),
-                        uris: uris,
-                        source: 'alchemyapi'
-                      });          
-                    }
-                  }
-                  var entities = mergeEntities(entities1, entities2);
-            		  if (!requestId) {
-            		    sendEntityExtractionResults(entities);
-          		    } else {
-                    GLOBAL_window[requestId]['alchemyapi'] = entities;
-          		    }
-          		  } else {
-          		    var entities = [];
-            		  if (!requestId) {
-            		    sendEntityExtractionResults(entities);
-          		    } else {
-                    GLOBAL_window[requestId]['alchemyapi'] = entities;
-          		    }          		    
-          		  }
-            	}
-            }  
-            xhr2.setRequestHeader(
-                'Content-Type', 'application/x-www-form-urlencoded');
-            xhr2.setRequestHeader('Content-Length', params.length);
-            xhr2.setRequestHeader('Connection', 'close');
-            xhr2.send(params);    
-    		  } else {
-      		  if (!requestId) {
-      		    var entities = [];
-      		    sendEntityExtractionResults(entities);
-    		    } else {
-              GLOBAL_window[requestId]['alchemyapi'] = entities;
-    		    }    		    
-    		  }
-      	}
-      }  
-      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-      xhr.setRequestHeader('Content-Length', params.length);
-      xhr.setRequestHeader('Connection', 'close');
-      xhr.send(params);    
+                  concept[key] = decodeURIComponent(concept[key]);
+                  uris.push({
+                    uri: concept[key],
+                    source: 'alchemyapi'
+                  });
+                }
+                if (uris.length > 0) {
+                  entities1.push({
+                    name: concept.text,
+                    relevance: parseFloat(concept.relevance),
+                    uris: uris,
+                    source: 'alchemyapi'
+                  });          
+                }
+              }
+              length1 = results.entities?
+                  results.entities.length :
+                  0;
+              var entities2 = [];
+              for (var i = 0; i < length1; i++) {
+                var entity = results.entities[i];
+                var uris = [];
+                if (!entity.hasOwnProperty('disambiguated')) {
+                  continue;
+                }
+                for (key in entity.disambiguated) {
+                  if ((key === 'name') ||
+                      (key === 'subType') ||
+                      (key === 'website') ||
+                      (key === 'geo')) {
+                    continue;
+                  }            
+                  entity.disambiguated[key] =
+                      decodeURIComponent(entity.disambiguated[key]);
+                  uris.push({
+                    uri: entity.disambiguated[key],
+                    source: 'alchemyapi'
+                  });            
+                }
+                if (uris.length > 0) {
+                  entities2.push({
+                    name: entity.text,
+                    relevance: parseFloat(entity.relevance),
+                    uris: uris,
+                    source: 'alchemyapi'
+                  });          
+                }
+              }
+              var entities = mergeEntities(entities1, entities2);
+        		  if (!requestId) {
+        		    sendEntityExtractionResults(entities);
+      		    } else {
+                GLOBAL_requests[requestId]['alchemyapi'] = entities;
+      		    }
+      		  });
+          }).on('error', function(e) {
+            sendResults(requestId, ["req2"], 'alchemyapi');        
+          }); 
+          req2.setHeader('Content-Length', params.length);
+          req2.write(params);		  
+          req2.end();
+        });
+      }).on('error', function(e) {
+        sendResults(requestId, ["req1"], 'alchemyapi');        
+      }); 
+      req.setHeader('Content-Length', params.length);
+      req.write(params);		  
+      req.end();  
     },
     combined: function() {
+      function uuid() {
+        var text = "";
+        var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        for (var i = 0; i < 5; i++) {
+          text += possible.charAt(Math.floor(Math.random() * possible.length));
+        }
+        return text;
+      }      
       var requestId = uuid();
-      GLOBAL_window[requestId] = {
+      GLOBAL_requests[requestId] = {
         zemanta: null,
         opencalais: null,
         alchemyapi: null,
@@ -524,25 +448,25 @@ function extractEntities(req, res, next) {
       services.opencalais(requestId);
       services.alchemyapi(requestId);
       services.spotlight(requestId);      
-      var servicesNames = Object.keys(GLOBAL_window[requestId]);
+      var servicesNames = Object.keys(GLOBAL_requests[requestId]);
       var length = servicesNames.length;      
       var interval = setInterval(function() {
         for (var i = 0; i < length; i++) {
           var serviceName = servicesNames[i];
-          if (!GLOBAL_window[requestId][serviceName]) {
+          if (!GLOBAL_requests[requestId][serviceName]) {
             return;
           }
         }
         clearInterval(interval);
-        var results = GLOBAL_window[requestId][servicesNames[0]];
+        var results = GLOBAL_requests[requestId][servicesNames[0]];
         for (var i = 1 /* 1, yes! */; i < length; i++) {
           var serviceName = servicesNames[i];
           results = mergeEntities(
-              results, GLOBAL_window[requestId][serviceName]);
+              results, GLOBAL_requests[requestId][serviceName]);
         }         
-        delete GLOBAL_window[requestId];
+        delete GLOBAL_requests[requestId];
         sendEntityExtractionResults(results);        
-      }, 1000);
+      }, 500);
     }
   };
 
