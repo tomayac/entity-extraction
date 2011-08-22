@@ -71,16 +71,6 @@ function extractEntities(req, res, next) {
     return entities2;
   }  
   
-  var sendEntityExtractionResults = function(json) {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    if (req.query.callback) {      
-      res.send(req.query.callback + '(' + JSON.stringify(json) + ')');      
-    } else {
-      res.send(JSON.stringify(json));
-    }
-  }  
-  
   var path;
   if (req.body) {
     path = /^\/entity-extraction\/(.+)$/;    
@@ -89,15 +79,7 @@ function extractEntities(req, res, next) {
   }
   var pathname = require('url').parse(req.url).pathname;
   var service = pathname.replace(path, '$1');
-  if (DEBUG) console.log('extractEntities => Service: ' + service); 
-  
-  function sendResults(requestId, entities, service) {
-    if (!requestId) {
-	    sendEntityExtractionResults(entities);
-    } else {    		      
-      GLOBAL_requests[requestId][service] = entities;
-    }     
-  }
+  if (DEBUG) console.log('extractEntities => Service: ' + service);   
   
   var text = req.body? 
       req.body.text:
@@ -192,30 +174,32 @@ function extractEntities(req, res, next) {
             sendResults(requestId, [], 'zemanta');
           }          
           var entities = [];
-          var length1 = response.markup.links.length;
-          for (var i = 0; i < length1; i++) {
-            var entity = response.markup.links[i];
-            var length2 = entity.target.length;
-            var uris = [];
-            for (var j = 0; j < length2; j++) {
-              if (entity.target[j].type === 'rdf') {
-                entity.target[j].url =
-                    decodeURIComponent(entity.target[j].url);
-                uris.push({
-                  uri: entity.target[j].url,
-                  source: 'zemanta'
-                });
+          if (response.markup && response.markup.links) {
+            var length1 = response.markup.links.length;
+            for (var i = 0; i < length1; i++) {
+              var entity = response.markup.links[i];
+              var length2 = entity.target.length;
+              var uris = [];
+              for (var j = 0; j < length2; j++) {
+                if (entity.target[j].type === 'rdf') {
+                  entity.target[j].url =
+                      decodeURIComponent(entity.target[j].url);
+                  uris.push({
+                    uri: entity.target[j].url,
+                    source: 'zemanta'
+                  });
+                }
               }
-            }
-            if (uris.length > 0) {
-              entities.push({
-                name: entity.anchor,
-                relevance: parseFloat(entity.confidence),
-                uris: uris,
-                source: 'zemanta'
-              });                          
-            }
-          }      	    
+              if (uris.length > 0) {
+                entities.push({
+                  name: entity.anchor,
+                  relevance: parseFloat(entity.confidence),
+                  uris: uris,
+                  source: 'zemanta'
+                });                          
+              }
+            }      	    
+          }
           sendResults(requestId, entities, 'zemanta');
   		  }); 		  
       }).on('error', function(e) {
@@ -355,7 +339,7 @@ function extractEntities(req, res, next) {
       	      } catch(e) {
                 sendResults(requestId, [], 'alchemyapi');
               }                      	    
-        	    results.entities = results2.entities;            	    
+        	    results.entities = results2.entities? results2.entities : {};            	    
         	    var entities1 = [];
               var length1 = results.concepts?
                   results.concepts.length :
@@ -474,7 +458,7 @@ function extractEntities(req, res, next) {
               results, GLOBAL_requests[requestId][serviceName]);
         }         
         delete GLOBAL_requests[requestId];
-        sendEntityExtractionResults(results);        
+        sendResults(false, results);        
       }, 500);
     }
   };
@@ -483,6 +467,20 @@ function extractEntities(req, res, next) {
   } else {
     if (DEBUG) console.log('Service "' + service + '" not found.');
     next();
+  }  
+  
+  function sendResults(requestId, entities, service) {
+    if (!requestId) {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.query.callback) {      
+        res.send(req.query.callback + '(' + JSON.stringify(entities) + ')');      
+      } else {
+        res.send(JSON.stringify(entities));
+      }
+    } else {    		      
+      GLOBAL_requests[requestId][service] = entities;
+    }     
   }  
 }
 
