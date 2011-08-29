@@ -94,6 +94,7 @@ function extractEntities(req, res, next) {
   
   var services = {    
     spotlight: function(requestId) {            
+      var currentService = 'spotlight';
       while (text.split(/\s+/g).length < 25) {
         text = text + ' ' + text;
       }
@@ -119,12 +120,12 @@ function extractEntities(req, res, next) {
           try {
             response = JSON.parse(response);
           } catch(e) {
-            sendResults(requestId, [], 'spotlight');
+            sendResults(requestId, [], currentService);
           }
           var entities = [];      	    
           var uris = [];
           if (response.Error || !response.Resources) {
-            sendResults(requestId, entities, 'spotlight');
+            sendResults(requestId, entities, currentService);
           }
           if (response.Resources) {
             var length1 = response.Resources.length;
@@ -134,24 +135,25 @@ function extractEntities(req, res, next) {
                 uris.push(entity['@URI']);
                 var uri = {
                   uri: entity['@URI'],
-                  source: 'spotlight'
+                  source: currentService
                 };
                 entities.push({
                   name: entity['@surfaceForm'],
                   relevance: parseFloat(entity['@similarityScore']),
                   uris: [uri],
-                  source: 'spotlight'
+                  source: currentService
                 });                                        
               }
             }
           }      	    
-          sendResults(requestId, entities, 'spotlight');
+          sendResults(requestId, entities, currentService);
   		  }); 		  
       }).on('error', function(e) {
-        sendResults(requestId, [], 'spotlight');        
+        sendResults(requestId, [], currentService);        
       });       
     },    
     zemanta: function(requestId) {      
+      var currentService = 'zemanta';
       var license = '4eqem8kyjzvkz8d2ken3xprb';
       var params = {
         method: 'zemanta.suggest_markup',
@@ -178,7 +180,7 @@ function extractEntities(req, res, next) {
           try {
             response = JSON.parse(response);
           } catch(e) {
-            sendResults(requestId, [], 'zemanta');
+            sendResults(requestId, [], currentService);
           }          
           var entities = [];
           if (response.markup && response.markup.links) {
@@ -193,7 +195,7 @@ function extractEntities(req, res, next) {
                       decodeURIComponent(entity.target[j].url);
                   uris.push({
                     uri: entity.target[j].url,
-                    source: 'zemanta'
+                    source: currentService
                   });
                 }
               }
@@ -202,20 +204,21 @@ function extractEntities(req, res, next) {
                   name: entity.anchor,
                   relevance: parseFloat(entity.confidence),
                   uris: uris,
-                  source: 'zemanta'
+                  source: currentService
                 });                          
               }
             }      	    
           }
-          sendResults(requestId, entities, 'zemanta');
+          sendResults(requestId, entities, currentService);
   		  }); 		  
       }).on('error', function(e) {
-        sendResults(requestId, [], 'zemanta');        
+        sendResults(requestId, [], currentService);        
       }); 
       req1.write(params);		  
       req1.end();
     },  
     opencalais: function(requestId) {
+      var currentService = 'opencalais';
       var license = 'xxqm6vznsj42scny2tk5dvrv';
       var paramsXml =
           '<c:params ' +
@@ -260,7 +263,7 @@ function extractEntities(req, res, next) {
     	      try {
     	        response = JSON.parse(response);
   	        } catch(e) {
-              sendResults(requestId, [], 'opencalais');
+              sendResults(requestId, [], currentService);
             }            
   	      }
           var entities = [];
@@ -274,27 +277,28 @@ function extractEntities(req, res, next) {
                     response[key]['name'];
                 var uri = {
                   uri: key,
-                  source: 'opencalais'
+                  source: currentService
                 };                      
                 entities.push({
                   name: name,
                   relevance: parseFloat(response[key].relevance),
                   uris: [uri],
-                  source: 'opencalais'
+                  source: currentService
                 }); 
               }
             }          
           }
-          sendResults(requestId, entities, 'opencalais');
+          sendResults(requestId, entities, currentService);
         });
       }).on('error', function(e) {
-        sendResults(requestId, [], 'zemanta');        
+        sendResults(requestId, [], currentService);        
       }); 
       req1.setHeader('Content-Length', params.length);
       req1.write(params);		  
       req1.end();
     },   
     alchemyapi: function(requestId) {
+      var currentService = 'alchemyapi';
       var license = '6075eba18cf6fedc3ad522703b22fac10c4440a7';
       var params = {
           apikey:	license,
@@ -339,12 +343,12 @@ function extractEntities(req, res, next) {
               try {
         	      results2 = JSON.parse(response2);
       	      } catch(e) {
-                sendResults(requestId, [], 'alchemyapi');
+                sendResults(requestId, [], currentService);
               }              
               try {
         	      results = JSON.parse(results);
       	      } catch(e) {
-                sendResults(requestId, [], 'alchemyapi');
+                sendResults(requestId, [], currentService);
               }                      	    
         	    results.entities = results2.entities? results2.entities : {};            	    
         	    var entities1 = [];
@@ -366,7 +370,7 @@ function extractEntities(req, res, next) {
                   concept[key] = decodeURIComponent(concept[key]);
                   uris.push({
                     uri: concept[key],
-                    source: 'alchemyapi'
+                    source: currentService
                   });
                 }
                 if (uris.length > 0) {
@@ -374,7 +378,7 @@ function extractEntities(req, res, next) {
                     name: concept.text,
                     relevance: parseFloat(concept.relevance),
                     uris: uris,
-                    source: 'alchemyapi'
+                    source: currentService
                   });          
                 }
               }
@@ -399,7 +403,7 @@ function extractEntities(req, res, next) {
                       decodeURIComponent(entity.disambiguated[key]);
                   uris.push({
                     uri: entity.disambiguated[key],
-                    source: 'alchemyapi'
+                    source: currentService
                   });            
                 }
                 if (uris.length > 0) {
@@ -407,22 +411,22 @@ function extractEntities(req, res, next) {
                     name: entity.text,
                     relevance: parseFloat(entity.relevance),
                     uris: uris,
-                    source: 'alchemyapi'
+                    source: currentService
                   });          
                 }
               }
               var entities = mergeEntities(entities1, entities2);
-              sendResults(requestId, entities, 'alchemyapi');
+              sendResults(requestId, entities, currentService);
       		  });
           }).on('error', function(e) {
-            sendResults(requestId, [], 'alchemyapi');        
+            sendResults(requestId, [], currentService);        
           }); 
           req2.setHeader('Content-Length', params.length);
           req2.write(params);		  
           req2.end();
         });
       }).on('error', function(e) {
-        sendResults(requestId, [], 'alchemyapi');        
+        sendResults(requestId, [], currentService);        
       }); 
       req1.setHeader('Content-Length', params.length);
       req1.write(params);		  
@@ -470,9 +474,9 @@ function extractEntities(req, res, next) {
           var serviceName = servicesNames[i];
           results = mergeEntities(
               results, GLOBAL_requests[requestId][serviceName]);
-        }         
-        delete GLOBAL_requests[requestId];
-        sendResults(false, results);                
+        }
+        sendResults(false, results);                         
+        delete GLOBAL_requests[requestId];        
       }, intervalTimeout);
     }
   };
@@ -492,8 +496,10 @@ function extractEntities(req, res, next) {
       } else {
         res.send(JSON.stringify(entities));
       }
-    } else {    		      
-      GLOBAL_requests[requestId][service] = entities;
+    } else {
+      if (GLOBAL_requests[requestId]) {    		      
+        GLOBAL_requests[requestId][service] = entities;
+      }
     }     
   }  
 }
