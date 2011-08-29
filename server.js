@@ -28,6 +28,13 @@ app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
 function extractEntities(req, res, next) {
     
   var mergeEntities = function(entities1, entities2) {
+    if (!entities1 && !entities2) {
+      return [];
+    } else if (entities1 && !entities2) {
+      return entities1;
+    } else if (entities2 && !entities1) {
+      return entities2;
+    }
     var entities = [];
     entities1.forEach(function(entity1) {
       var contained = false;
@@ -253,7 +260,7 @@ function extractEntities(req, res, next) {
     	      try {
     	        response = JSON.parse(response);
   	        } catch(e) {
-              sendResults(requestId, [], 'opencalais');
+              //sendResults(requestId, [], 'opencalais');
             }            
   	      }
           var entities = [];
@@ -442,9 +449,16 @@ function extractEntities(req, res, next) {
       services.alchemyapi(requestId);
       services.spotlight(requestId);      
       var servicesNames = Object.keys(GLOBAL_requests[requestId]);
-      var length = servicesNames.length;      
+      var length = servicesNames.length;
+      var intervalTimeout = 500;
+      var timeout = 40 * intervalTimeout;
+      var passedTime = 0;
       var interval = setInterval(function() {
+        passedTime += intervalTimeout;
         for (var i = 0; i < length; i++) {
+          if (passedTime >= timeout) {
+            break;
+          }
           var serviceName = servicesNames[i];
           if (!GLOBAL_requests[requestId][serviceName]) {
             return;
@@ -458,8 +472,8 @@ function extractEntities(req, res, next) {
               results, GLOBAL_requests[requestId][serviceName]);
         }         
         delete GLOBAL_requests[requestId];
-        sendResults(false, results);        
-      }, 500);
+        sendResults(false, results);                
+      }, intervalTimeout);
     }
   };
   if (services[service]) {
