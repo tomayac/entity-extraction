@@ -260,7 +260,7 @@ function extractEntities(req, res, next) {
     	      try {
     	        response = JSON.parse(response);
   	        } catch(e) {
-              //sendResults(requestId, [], 'opencalais');
+              sendResults(requestId, [], 'opencalais');
             }            
   	      }
           var entities = [];
