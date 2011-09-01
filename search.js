@@ -1,6 +1,9 @@
 var http = require('http');
 var https = require('https');
 var querystring = require('querystring');
+var Step = require('./step.js');
+require('./uris.js');
+var request = require('request');
 
 var express = require('express');
 var app = express.createServer();
@@ -28,10 +31,32 @@ var GLOBAL_config = {
   FLICKR_KEY: 'b0f2a04baa5dd667fb181701408db162',
   YFROG_KEY: '89ABGHIX5300cc8f06b447103e19a201c7599962',
   INSTAGRAM_KEY: '82fe3d0649e04c2da8e38736547f9170',
-  INSTAGRAM_SECRET: '4cf97de2075c4c8fbebdde57c5f9705a'
+  INSTAGRAM_SECRET: '4cf97de2075c4c8fbebdde57c5f9705a',
+  HEADERS: {
+    "Accept": "application/json, text/javascript, */*",
+    "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
+    "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
+    "Connection": "keep-alive",
+    "Content-Type": "application/x-www-form-urlencoded",    
+    "Referer": "http://www.google.com/",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
+  },
+  MEDIA_PLATFORMS: '(yfrog.com OR instagr.am OR flic.kr OR moby.to OR youtu.be OR twitpic.com OR lockerz.com OR picplz.com OR qik.com OR ustre.am OR twitvid.com)'
 };
 
 app.get(/^\/search\/(.+)\/(.+)$/, search);
+
+/* Stolen from https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Date#Example:_ISO_8601_formatted_dates */
+function ISODateString(d) {  
+ function pad(n) { return n < 10 ? '0' + n : n }
+ d = new Date(d);
+ return d.getUTCFullYear() + '-'
+      + pad(d.getUTCMonth()+ 1) + '-'
+      + pad(d.getUTCDate()) + 'T'
+      + pad(d.getUTCHours()) + ':'
+      + pad(d.getUTCMinutes()) + ':'
+      + pad(d.getUTCSeconds()) + 'Z';
+}
 
 function search(req, res, next) {
   var path = /^\/search\/(.+)\/(.+)$/;
@@ -50,16 +75,7 @@ function search(req, res, next) {
         host: 'graph.facebook.com',
         port: 443,
         path: '/search?' + params + '&type=post',
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http:/facebook.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       https.get(options, function(reply) { 
         var response = '';
@@ -76,6 +92,7 @@ function search(req, res, next) {
               if (item.type !== 'photo' && item.type !== 'video') {
                 continue;
               }
+              var timestamp = Date.parse(item.created_time);
               results.push({
                 /*
                 url: 'https://www.facebook.com/permalink.php?story_fbid=' + 
@@ -91,7 +108,8 @@ function search(req, res, next) {
                     (item.message ? '. ' + item.message : ''),
                 user: 'https://www.facebook.com/profile.php?id=' + item.from.id,
                 type: item.type,
-                timestamp: Date.parse(item.created_time)
+                timestamp: timestamp,
+                published: ISODateString(timestamp)
               });
             }
           }
@@ -108,23 +126,14 @@ function search(req, res, next) {
     twitter: function(requestId) {
       var currentService = 'twitter';         
       var params = {
-        q: query + ' AND ' + '(yfrog.com OR instagr.am OR flic.kr OR moby.to OR youtu.be OR twitpic.com) -"RT "'
+        q: query + ' AND ' + GLOBAL_config.MEDIA_PLATFORMS + ' -"RT "'
       };
       params = querystring.stringify(params);
       var options = {
         host: 'search.twitter.com',
         port: 80,
         path: '/search.json?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http:/twitter.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       http.get(options, function(reply) { 
         var response = '';
@@ -135,28 +144,92 @@ function search(req, res, next) {
           response = JSON.parse(response);
           var results = [];
           if (response.results.length) {
+            var urlRegEx = /\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/ig
             var items = response.results;
+            var stack = [];            
             for (var i = 0, len = items.length; i < len; i++) {
               var item = items[i];
-              results.push({
-                url: 'http://twitter.com/' +
-                    item.from_user + '/status/' + item.id,
-                message: item.text,
-                user: 'http://twitter.com/' + item.from_user,
-                type: 'micropost',
-                timestamp: Date.parse(item.created_at)
-              });
+              var urls = [];
+              text = item.text.replace(urlRegEx, function(url) {
+                var displayURL = url;
+                var targetURL = (/^\w+\:\//.test(url) ? '' : 'http://') + url;
+                urls.push(targetURL);
+              });              
+              var optionsStack = [];                    
+              for (var j = 0, len2 = urls.length; j < len2; j++) {
+                var url = urls[j];
+                var urlObj = new URI(url);
+                var options = {
+                  host: urlObj.heirpart().authority().host(),
+                  method: 'HEAD',
+                  port: (url.indexOf('https') === 0 ? 443 : 80),
+                  path: urlObj.heirpart().path() +
+                      (urlObj.querystring() ? urlObj.querystring() : '') +
+                      (urlObj.fragment() ? urlObj.fragment() : ''),
+                  headers: GLOBAL_config.HEADERS
+                };
+                optionsStack[j] = options;
+              }              
+              stack[i] = {
+                urls: urls,
+                options: optionsStack,
+                item: item                
+              };              
             }
-          }
-          var output = {
-            result: results,
-            source: currentService
-          };
-          sendResults(output, currentService, requestId);
+            Step(            
+              function() {              
+                var group = this.group();
+                stack.forEach(function (obj) {
+                  obj.options.forEach(function(options) {
+                    var cb = group();
+                    var url = (options.port === 80 ? 'http://' : 'https://') +
+                        options.host + options.path;
+                    var req2 = http.request(options, function(reply2) {
+                      cb(null, {
+                        req: reply2,
+                        url: url
+                      });
+                    });
+                    req2.end();                  
+                  });
+                });       
+              },     
+              function(err, replies) { 
+                var locations = [];
+                replies.forEach(function(thing, i) {
+                  if ((thing.req.statusCode === 301) ||
+                      (thing.req.statusCode === 302)) {
+                    locations[i] = thing.req.headers.location;
+                  } else {
+                    locations[i] = thing.url;
+                  }
+                });
+                for (var i = 0, len = stack.length; i < len; i++) {
+                  stack[i].urls.forEach(function(url, j) {
+                    var item = stack[i].item;
+                    var timestamp = Date.parse(item.created_at);
+                    results.push({
+                      url: locations[i + j],
+                      message: item.text,
+                      user: 'http://twitter.com/' + item.from_user,
+                      type: 'micropost',
+                      timestamp: timestamp,
+                      published: ISODateString(timestamp)
+                    });                          
+                  });
+                }
+                var output = {
+                  result: results,
+                  source: currentService
+                };                                          
+                sendResults(output, currentService, requestId);
+              }
+            );            
+          }          
         });
       }).on('error', function(e) {
         // error
-      });                       
+      });               
     },
     instagram: function(requestId) {
       var currentService = 'instagram';         
@@ -170,16 +243,7 @@ function search(req, res, next) {
         path: '/v1/tags/' +
             query.replace(/\s*/g, '').replace(/\W*/g, '').toLowerCase() +
             '/media/recent?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http://instagram.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       https.get(options, function(reply) { 
         var response = '';
@@ -193,12 +257,14 @@ function search(req, res, next) {
             var items = response.data;
             for (var i = 0, len = items.length; i < len; i++) {
               var item = items[i];
+              var timestamp = item.created_time;
               results.push({
                 url: item.images.standard_resolution.url,
                 message: item.caption.text + '. ' + item.tags.join(', '),
                 user: 'https://api.instagram.com/v1/users/' + item.user.id,
                 type: item.type === 'image'? 'photo' : '',
-                timestamp: item.created_time
+                timestamp: timestamp,
+                published: ISODateString(timestamp)
               });
             }
           }
@@ -229,16 +295,7 @@ function search(req, res, next) {
         host: 'gdata.youtube.com',
         port: 80,
         path: '/feeds/api/videos?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http://youtube.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       http.get(options, function(reply) {        
         var response = '';
@@ -252,12 +309,14 @@ function search(req, res, next) {
             var items = response.data.items;
             for (var i = 0, len = items.length; i < len; i++) {
               var item = items[i];
+              var timestamp = Date.parse(item.uploaded);
               results.push({
                 url: item.player.default,
                 message: item.title + '. ' + item.description,
                 user: 'http://www.youtube.com/' + item.uploader,
                 type: 'video',
-                timestamp: Date.parse(item.uploaded)
+                timestamp: timestamp,
+                published: ISODateString(timestamp)
               });
             }
           }
@@ -285,23 +344,15 @@ function search(req, res, next) {
         format: 'json',
         nojsoncallback: 1,
         min_taken_date: now - sixDays,
-        media: (videoSearch? 'videos' : 'photos')
+        media: (videoSearch? 'videos' : 'photos'),
+        per_page: 10
       };
       params = querystring.stringify(params);
       var options = {
         host: 'api.flickr.com',
         port: 80,
         path: '/services/rest/?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http://flickr.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       http.get(options, function(reply) {        
         var response = '';
@@ -313,6 +364,25 @@ function search(req, res, next) {
           var results = [];
           if (response.photos && response.photos.photo) {
             var photos = response.photos.photo;
+            var pendingRequests = {};
+            for (var i = 0, len = photos.length; i < len; i++) {
+              var photo = photos[i];
+              pendingRequests[photo.id] = false;
+            }
+            var interval = setInterval(function() {
+              for (var i = 0, len = photos.length; i < len; i++) {
+                var photo = photos[i];
+                if (!pendingRequests[photo.id]) {
+                  return;
+                }
+              }
+              clearInterval(interval);
+              var output = {
+                result: results,
+                source: currentService
+              };
+              sendResults(output, currentService, requestId);                                
+            }, 500);                        
             for (var i = 0, len = photos.length; i < len; i++) {
               var photo = photos[i];
               if (photo.ispublic) {                
@@ -328,16 +398,7 @@ function search(req, res, next) {
                   host: 'api.flickr.com',
                   port: 80,
                   path: '/services/rest/?' + params,
-                  headers: {
-                    "Accept": "application/json, text/javascript, */*",
-                    "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-                    "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-                    "Connection": "keep-alive",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Referer": "http://flickr.com/",
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-                    "X-Requested-With": "XMLHttpRequest"
-                  } 
+                  headers: GLOBAL_config.HEADERS
                 };
                 http.get(options, function(reply2) {        
                   var response2 = '';
@@ -346,27 +407,26 @@ function search(req, res, next) {
                   });
                   reply2.on('end', function() {      
                     response2 = JSON.parse(response2);                
-                    sendResults(response2, currentService, requestId);                                
+                    var photo2 = response2.photo;
+                    var timestamp = Date.parse(photo2.dates.taken);
                     results.push({
                       url: 'http://www.flickr.com/photos/' +
-                          photo.owner + '/' + photo.id + '/',
-                      message: photo.title,
+                          photo2.owner.nsid + '/' + photo2.id + '/',
+                      message: photo2.title._content + '. ' +
+                          photo2.description._content,
                       user: 'http://www.flickr.com/photos/' +
-                          photo.owner + '/',
+                          photo2.owner.nsid + '/',
                       type: (videoSearch? 'video' : 'photo'),
-                      timestamp: Date.parse(response2.photo.dates.taken)                           
-                    });
+                      timestamp: timestamp,
+                      published: ISODateString(timestamp)
+                    });                    
+                    pendingRequests[photo2.id] = true;
                   });
                 }).on('error', function(e) {
                   // error
                 });
               }
             }
-            var output = {
-              result: results,
-              source: currentService
-            };
-            //sendResults(output, currentService, requestId);                                
           }
         });
       }).on('error', function(e) {
@@ -386,15 +446,7 @@ function search(req, res, next) {
         host: 'api.mobypicture.com',
         port: 80,
         path: '/?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http://mobypicture.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       http.get(options, function(reply) {        
         var response = '';
@@ -408,11 +460,14 @@ function search(req, res, next) {
             var results = [];
             for (var i = 0, len = items.length; i < len; i++) {
               var item = items[i];
+              var timestamp = item.post.created_on_epoch;
               results.push({
                 url: item.post.media.url_full,
                 message: item.post.title + '. ' + item.post.description,
                 user: item.user.url,
-                type: item.post.media.type
+                type: item.post.media.type,
+                timestamp: timestamp,
+                published: ISODateString(timestamp)
               });
             }
           }
@@ -438,16 +493,7 @@ function search(req, res, next) {
         host: 'twitpic.com',
         port: 80,
         path: '/search/show?' + params,
-        headers: {
-          "Accept": "application/json, text/javascript, */*",
-          "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-          "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-          "Connection": "keep-alive",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Referer": "http://twitpic.com/search",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-          "X-Requested-With": "XMLHttpRequest"
-        } 
+        headers: GLOBAL_config.HEADERS
       };
       http.get(options, function(reply) {        
         var response = '';
@@ -457,7 +503,7 @@ function search(req, res, next) {
         reply.on('end', function() {      
           response = JSON.parse(response);
           var results = [];
-          if (response.length) {
+          if (response.length) {            
             for (var i = 0, len = response.length; i < len; i++) {
               var item = response[i];
               var id = item.link.replace(/.*?\/(\w+)$/, '$1');
@@ -469,16 +515,7 @@ function search(req, res, next) {
                 host: 'api.twitpic.com',
                 port: 80,
                 path: '/2/media/show.json?' + params,
-                headers: {
-                  "Accept": "application/json, text/javascript, */*",
-                  "Accept-Charset": "ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-                  "Accept-Language": "en-US,en;q=0.8,fr-FR;q=0.6,fr;q=0.4,de;q=0.2,de-DE;q=0.2,es;q=0.2,ca;q=0.2",
-                  "Connection": "keep-alive",
-                  "Content-Type": "application/x-www-form-urlencoded",
-                  "Referer": "http://twitpic.com/search",
-                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
-                  "X-Requested-With": "XMLHttpRequest"
-                } 
+                headers: GLOBAL_config.HEADERS
               };
               http.get(options, function(reply2) {        
                 var response2 = '';
@@ -487,11 +524,14 @@ function search(req, res, next) {
                 });
                 reply2.on('end', function() {      
                   response2 = JSON.parse(response2);                  
+                  var timestamp = Date.parse(response2.timestamp);
                   results.push({
                     url: item.link,
                     message: item.message, 
                     user: 'http://twitter.com/' + response2.user.username,
-                    type: 'photo'
+                    type: 'photo',
+                    timestamp: timestamp,
+                    published: ISODateString(timestamp)
                   });
                   var output = {
                     result: results,
@@ -503,6 +543,12 @@ function search(req, res, next) {
                 // error
               });
             }
+          } else {
+            var output = {
+              result: results,
+              source: currentService
+            };
+            sendResults(output, currentService, requestId);                                                                            
           }
         });
       }).on('error', function(e) {
