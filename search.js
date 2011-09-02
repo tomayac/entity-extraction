@@ -39,7 +39,7 @@ var GLOBAL_config = {
     "Referer": "http://www.google.com/",
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
   },
-  MEDIA_PLATFORMS: '(yfrog.com OR instagr.am OR flic.kr OR moby.to OR youtu.be OR twitpic.com OR lockerz.com OR picplz.com OR qik.com OR ustre.am OR twitvid.com)',
+  MEDIA_PLATFORMS: ['yfrog.com', 'instagr.am', 'flic.kr', 'moby.to', 'youtu.be', 'twitpic.com', 'lockerz.com', 'picplz.com', 'qik.com', 'ustre.am', 'twitvid.com'],
   URL_REGEX: /\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/ig
 };
 
@@ -157,7 +157,7 @@ function search(req, res, next) {
     twitter: function(pendingRequests) {
       var currentService = 'twitter';         
       var params = {
-        q: query + ' ' + GLOBAL_config.MEDIA_PLATFORMS + ' -"RT "'
+        q: query + ' ' + GLOBAL_config.MEDIA_PLATFORMS.join(' OR ') + ' -"RT "'
       };
       params = querystring.stringify(params);
       var options = {
@@ -245,27 +245,44 @@ function search(req, res, next) {
                 });       
               },     
               function(err, replies) { 
+                /**
+                 * Checks if a URL is one of the media platform URLs
+                 */
+                function checkForValidUrl(url) {
+                  var host = new Uri(url).heirpart().authority().host();
+                  return GLOBAL_config.MEDIA_PLATFORMS.indexOf(host) !== -1;
+                }
                 var locations = [];
                 replies.forEach(function(thing, i) {
                   if ((thing.req.statusCode === 301) ||
-                      (thing.req.statusCode === 302)) {
-                    locations[i] = thing.req.headers.location;
+                      (thing.req.statusCode === 302)) {    
+                    if (checkForValidUrl(thing.req.headers.location)) {    
+                      locations.push(thing.req.headers.location);
+                    } else {
+                      locations.push(false);
+                    }
                   } else {
-                    locations[i] = thing.url;
+                    if (checkForValidUrl(thing.url)) {    
+                      locations.push(thing.url);
+                    } else {
+                      locations.push(false);
+                    }
                   }
                 });
                 for (var i = 0, len = itemStack.length; i < len; i++) {
                   itemStack[i].urls.forEach(function(url, j) {
                     var item = itemStack[i].item;
                     var timestamp = Date.parse(item.created_at);
-                    results.push({
-                      url: locations[i + j],
-                      message: cleanMessage(item.text),
-                      user: 'http://twitter.com/' + item.from_user,
-                      type: 'micropost',
-                      timestamp: timestamp,
-                      published: getIsoDateString(timestamp)
-                    });                          
+                    if (locations[i + j]) {
+                      results.push({
+                        url: locations[i + j],
+                        message: cleanMessage(item.text),
+                        user: 'http://twitter.com/' + item.from_user,
+                        type: 'micropost',
+                        timestamp: timestamp,
+                        published: getIsoDateString(timestamp)
+                      });                          
+                    }
                   });
                 }
                 sendResults(results, currentService, pendingRequests);
@@ -405,7 +422,7 @@ function search(req, res, next) {
           var results = [];
           if ((response.photos) && (response.photos.photo)) {
             var photos = response.photos.photo;
-            Step(            
+            Step(     
               function() {              
                 var group = this.group();
                 for (var i = 0, len = photos.length; i < len; i++) {
@@ -433,13 +450,18 @@ function search(req, res, next) {
                       });
                       reply2.on('end', function() {      
                         response2 = JSON.parse(response2);                
+                        var tags = [];
+                        response2.photo.tags.tag.forEach(function(tag) {
+                          tags.push(tag._content);
+                        });
                         var photo2 = response2.photo;
                         var timestamp = Date.parse(photo2.dates.taken);
                         results.push({
                           url: 'http://www.flickr.com/photos/' +
                               photo2.owner.nsid + '/' + photo2.id + '/',
                           message: cleanMessage(photo2.title._content + '. ' +
-                              photo2.description._content),
+                              photo2.description._content +
+                              tags.join(', ')),
                           user: 'http://www.flickr.com/photos/' +
                               photo2.owner.nsid + '/',
                           type: (videoSearch ? 'video' : 'photo'),
