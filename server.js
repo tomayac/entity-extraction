@@ -164,7 +164,7 @@ function extractEntities(req, res, next) {
       };
       params = querystring.stringify(params);
       var options = {
-        host: 'api.zemanta.com',
+        host: 'papi.zemanta.com',
         method: 'POST',
         port: 80,
         headers: {'Content-Length': params.length},
@@ -436,8 +436,9 @@ function extractEntities(req, res, next) {
       function uuid() {
         var text = "";
         var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        var length = possible.length;
         for (var i = 0; i < 5; i++) {
-          text += possible.charAt(Math.floor(Math.random() * possible.length));
+          text += possible.charAt(Math.floor(Math.random() * length));
         }
         return text;
       }      
