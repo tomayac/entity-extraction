@@ -5,6 +5,10 @@ var request = require('request');
 var Step = require('./step.js');
 var Uri = require('./uris.js');
 
+// jspos
+var Lexer = require('./jspos/lexer.js');
+var POSTagger = require('./jspos/POSTagger.js');
+
 var express = require('express');
 var app = express.createServer();
 
@@ -39,8 +43,10 @@ var GLOBAL_config = {
     "Referer": "http://www.google.com/",
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.854.0 Safari/535.2",
   },
-  MEDIA_PLATFORMS: ['yfrog.com', 'instagr.am', 'flic.kr', 'moby.to', 'youtu.be', 'twitpic.com', 'lockerz.com', 'picplz.com', 'qik.com', 'ustre.am', 'twitvid.com'],
-  URL_REGEX: /\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/ig
+  MEDIA_PLATFORMS: ['yfrog.com', 'instagr.am', 'flic.kr', 'moby.to', 'youtu.be', 'twitpic.com', 'lockerz.com', 'picplz.com', 'qik.com', 'ustre.am', 'twitvid.com', 'photobucket.com'],
+  URL_REGEX: /\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/ig,
+  HASHTAG_REGEX: /(^|\s)\#(\S+)/g,
+  USER_REGEX: /(^|\W)\@([a-zA-Z0-9_]+)/g
 };
 
 app.get(/^\/search\/(.+)\/(.+)$/, search);
@@ -65,7 +71,33 @@ function search(req, res, next) {
    * Removes line breaks, double spaces, etc.
    */
   function cleanMessage(message) {
-    return message.replace(/[\n\r\t]/g, ' ').replace(/\s+/g, ' ');    
+    if (message) {
+      message = message.replace(/[\n\r\t]/g, ' ').replace(/\s+/g, ' ');
+      message = message.replace('&quot;', '\"');      
+      message = message.replace('&amp;', '&');      
+      var cleanMessage = message.replace(GLOBAL_config.URL_REGEX, ' ');      
+      cleanMessage = cleanMessage.replace(GLOBAL_config.HASHTAG_REGEX, ' $2');
+      cleanMessage = cleanMessage.replace(GLOBAL_config.USER_REGEX, ' $2');
+      cleanMessage = cleanMessage.replace(/\s+/g, ' ');
+      var words = new Lexer().lex(cleanMessage);
+      var taggedWords = new POSTagger().tag(words);
+      var result = [];
+      for (i in taggedWords) {
+        var taggedWord = taggedWords[i];
+        if (taggedWord[1].startsWith('NN')) {
+          var word = taggedWord[0];
+          var tag = taggedWord[2];
+          result.push({
+            word: word.toLowerCase(),
+            tag: tag
+          });
+        }
+      }
+      return {
+        text: message,
+        nouns: result         
+      };          
+    }
   }  
   
   /**
@@ -85,7 +117,6 @@ function search(req, res, next) {
         res.send(json);
       }
     } else {
-      console.log('Done: ' + service);
       pendingRequests[service] = json;
     }
   }
@@ -205,7 +236,7 @@ function search(req, res, next) {
                 urls: urls,
                 options: optionsStack,
                 item: item                
-              };              
+              };
             }
             // for each tweet retrieve all URLs and try to expand shortend URLs
             Step(            
@@ -269,20 +300,25 @@ function search(req, res, next) {
                     }
                   }
                 });
+                var locationIndex = 0;
                 for (var i = 0, len = itemStack.length; i < len; i++) {
-                  itemStack[i].urls.forEach(function(url, j) {
-                    var item = itemStack[i].item;
-                    var timestamp = Date.parse(item.created_at);
-                    if (locations[i + j]) {
+                  var item = itemStack[i].item;
+                  var timestamp = Date.parse(item.created_at);                  
+                  var published = getIsoDateString(timestamp)
+                  var message = cleanMessage(item.text);
+                  var user = 'http://twitter.com/' + item.from_user;
+                  itemStack[i].urls.forEach(function() {
+                    if (locations[locationIndex]) {
                       results.push({
-                        url: locations[i + j],
-                        message: cleanMessage(item.text),
-                        user: 'http://twitter.com/' + item.from_user,
+                        url: locations[locationIndex],
+                        message: message,
+                        user: user,
                         type: 'micropost',
                         timestamp: timestamp,
-                        published: getIsoDateString(timestamp)
+                        published: published
                       });                          
                     }
+                    locationIndex++;
                   });
                 }
                 sendResults(results, currentService, pendingRequests);
@@ -323,10 +359,15 @@ function search(req, res, next) {
             for (var i = 0, len = items.length; i < len; i++) {
               var item = items[i];
               var timestamp = parseInt(item.created_time + '000', 10);
+              var message = '';
+              message += (item.caption && item.caption.text ?
+                  item.caption.text : '');
+              message += (message.length ? '. ' : '') + 
+                  (item.tags && Array.isArray(item.tags) ?
+                      item.tags.join(', ') : '');
               results.push({
                 url: item.images.standard_resolution.url,
-                message: cleanMessage(
-                    item.caption.text + '. ' + item.tags.join(', ')),
+                message: cleanMessage(message),
                 user: 'https://api.instagram.com/v1/users/' + item.user.id,
                 type: item.type === 'image'? 'photo' : '',
                 timestamp: timestamp,
@@ -578,18 +619,27 @@ function search(req, res, next) {
                     reply2.on('data', function(chunk) {
                       response2 += chunk;
                     });
-                    reply2.on('end', function() {      
-                      response2 = JSON.parse(response2);                  
-                      var timestamp = Date.parse(response2.timestamp);
-                      results.push({
-                        url: 'http://twitpic.com/' + response2.short_id,
-                        message: cleanMessage(response2.message), 
-                        user: 'http://twitter.com/' + response2.user.username,
-                        type: 'photo',
-                        timestamp: timestamp,
-                        published: getIsoDateString(timestamp)
-                      });
-                      cb();
+                    reply2.on('end', function() {                            
+                      if (response2) {
+                        response2 = JSON.parse(response2);                  
+                      } else {
+                        cb();
+                        return;
+                      }
+                      if (!response2.errors) {                      
+                        var timestamp = Date.parse(response2.timestamp);
+                        results.push({
+                          url: 'http://twitpic.com/' + response2.short_id,
+                          message: cleanMessage(response2.message), 
+                          user: 'http://twitter.com/' + response2.user.username,
+                          type: 'photo',
+                          timestamp: timestamp,
+                          published: getIsoDateString(timestamp)
+                        });
+                        cb();
+                      } else {
+                        cb();
+                      }
                     });
                   }).on('error', function(e) {
                     cb();
