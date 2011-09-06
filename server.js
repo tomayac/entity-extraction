@@ -286,7 +286,6 @@ function extractEntities(req, res, next) {
               sendResults(pendingRequests, entities, currentService);
             }            
   	      }          
-  	      console.log(response);
   	      var keys = typeof(response) === 'object' ? Object.keys(response) : [];
           for (var i = 0, len = keys.length; i < len; i++) {
             var key = keys[i];
