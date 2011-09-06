@@ -34,7 +34,6 @@ app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
  * Combined function for entity extraction for POST and GET
  */
 function extractEntities(req, res, next) {
-  console.log('******* Referer: ' + req.headers.referer);
     
   /**
    * Merges two entity arrays based on URIs, calculates relevance averages, and
