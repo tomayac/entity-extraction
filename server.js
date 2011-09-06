@@ -286,7 +286,8 @@ function extractEntities(req, res, next) {
               sendResults(pendingRequests, entities, currentService);
             }            
   	      }          
-  	      var keys = Object.keys(response);
+  	      console.log(response);
+  	      var keys = typeof(response) === 'object' ? Object.keys(response) : [];
           for (var i = 0, len = keys.length; i < len; i++) {
             var key = keys[i];
             if (key === 'doc') {
@@ -380,7 +381,8 @@ function extractEntities(req, res, next) {
               for (var i = 0, len1 = concepts.length; i < len1; i++) {
                 var concept = concepts[i];
                 var uris = [];
-                var keys = Object.keys(concept);
+                var keys = typeof(concept) === 'object' ?
+                    Object.keys(concept) : [];
                 for (var j = 0, len2 = keys.length; j < len2; j++) {
                   var key = keys[j];
                   if ((key === 'text') ||
@@ -414,7 +416,8 @@ function extractEntities(req, res, next) {
                   continue;
                 }
                 var disambiguated = entity.disambiguated;
-                var keys = Object.keys(disambiguated);
+                var keys = typeof(disambiguated) === 'object' ?
+                    Object.keys(disambiguated) : [];
                 for (j = 0, len2 = keys.length; j < len2; j++) {
                   var key = keys[j];
                   if ((key === 'name') ||
@@ -460,7 +463,8 @@ function extractEntities(req, res, next) {
     services[service]();
   } 
   if (service === 'combined') {
-    var serviceNames = Object.keys(services);
+    var serviceNames = typeof(services) === 'object' ?
+        Object.keys(services) : [];
     var pendingRequests = {}
     serviceNames.forEach(function(serviceName) {
       pendingRequests[serviceName] = false;
