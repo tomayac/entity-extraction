@@ -680,8 +680,7 @@ function search(req, res, next) {
         if (passedTime >= timeout) {
           break;
         }
-        var serviceName = serviceNames[i];
-        if (pendingRequests[serviceName] === false) {
+        if (pendingRequests[serviceNames[i]] === false) {
           return;
         }
       }
