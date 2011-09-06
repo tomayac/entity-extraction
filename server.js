@@ -498,9 +498,6 @@ function extractEntities(req, res, next) {
     if (!pendingRequests) {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      entities.forEach(function(entity) {
-        console.log(entity.name);
-      });
       if (req.query.callback) {      
         res.send(req.query.callback + '(' + JSON.stringify(entities) + ')');      
       } else {
