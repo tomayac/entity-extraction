@@ -3,11 +3,8 @@ var DEBUG = false;
 // requires
 var http = require('http');
 var querystring = require('querystring');
-var express = require('express');
-// require('v8-profile');
-
-// express
-var app = express.createServer();
+var express = require("express");
+var app = express();
 
 app.configure(function(){
   app.use(express.methodOverride());
@@ -35,7 +32,7 @@ app.post(/^\/entity-extraction\/(.+)$/, extractEntities);
  * Combined function for entity extraction for POST and GET
  */
 function extractEntities(req, res, next) {
-    
+
   /**
    * Merges two entity arrays based on URIs, calculates relevance averages, and
    * maintains provenance information
@@ -83,7 +80,7 @@ function extractEntities(req, res, next) {
           // provenance
           var provenance1 = entity1.source;
           var provenance2 = entity2.source;
-          if (provenance1 !== provenance2) {          
+          if (provenance1 !== provenance2) {
             entities2[j].source = provenance2 + ',' + provenance1;
           }
         }
@@ -94,12 +91,12 @@ function extractEntities(req, res, next) {
     }
     entities2 = entities2.concat(entities);
     return entities2;
-  }  
-  
+  }
+
   var path;
   // POST
   if (req.body) {
-    path = /^\/entity-extraction\/(.+)$/;    
+    path = /^\/entity-extraction\/(.+)$/;
   // GET
   } else {
     path = /^\/entity-extraction\/(.+)\/(.+)$/;
@@ -107,51 +104,51 @@ function extractEntities(req, res, next) {
   // service name
   var pathname = require('url').parse(req.url).pathname;
   var service = pathname.replace(path, '$1');
-  if (DEBUG) console.log('extractEntities => Service: ' + service);   
-  
+  if (DEBUG) console.log('extractEntities => Service: ' + service);
+
   // to-be-annotated text
-  var text = req.body ? 
-      req.body.text : decodeURIComponent(pathname.replace(path, '$2'));  
-  
+  var text = req.body ?
+      req.body.text : decodeURIComponent(pathname.replace(path, '$2'));
+
   // object with all service names
-  var services = {    
-    spotlight: function(pendingRequests) {            
+  var services = {
+    spotlight: function(pendingRequests) {
       var currentService = 'spotlight';
       // make sure we have at least 25 words
       while (text.split(/\s+/g).length < 25) {
         text = text + ' ' + text;
       }
       var params = {
-        confidence: 0.5,
-        support: 30,
-        text:	text
+        confidence: 0.25,
+        support: 35,
+        text:  text
       };
       params = querystring.stringify(params);
       var options = {
         host: 'spotlight.dbpedia.org',
         port: 80,
         path: '/rest/annotate?' + params,
-        headers: {Accept: 'application/json'}     
+        headers: {Accept: 'application/json'}
       };
-      var entities = [];      	    
-      http.get(options, function(res) {        
+      var entities = [];
+      http.get(options, function(res) {
         var response = '';
         res.on('data', function(chunk) {
           response += chunk;
         });
-        res.on('end', function() {          
+        res.on('end', function() {
           try {
             response = JSON.parse(response);
           } catch(e) {
             sendResults(pendingRequests, entities, currentService);
-          }                    
+          }
           if (response.Error || !response.Resources) {
             sendResults(pendingRequests, entities, currentService);
           }
           if (response.Resources) {
             var uris = {};
             for (var i = 0, len = response.Resources.length; i < len; i++) {
-              var entity = response.Resources[i];              
+              var entity = response.Resources[i];
               // the value of entity['@URI'] is not unique, but we only need it
               // once, we simply don't care about the other occurrences
               var currentUri = entity['@URI'];
@@ -165,24 +162,24 @@ function extractEntities(req, res, next) {
                     source: currentService
                   }],
                   source: currentService
-                });                                        
+                });
               }
             }
-          }      	    
+          }
           sendResults(pendingRequests, entities, currentService);
-  		  }); 		  
+        });
       }).on('error', function(e) {
-        sendResults(pendingRequests, entities, currentService);        
-      });       
-    },    
-    zemanta: function(pendingRequests) {      
+        sendResults(pendingRequests, entities, currentService);
+      });
+    },
+    zemanta: function(pendingRequests) {
       var currentService = 'zemanta';
       var license = '4eqem8kyjzvkz8d2ken3xprb';
       var params = {
         method: 'zemanta.suggest_markup',
-        api_key:	license,
-        text:	text,
-        format:	'json',
+        api_key:  license,
+        text:  text,
+        format:  'json',
         return_rdf_links: 1
       };
       params = querystring.stringify(params);
@@ -193,8 +190,8 @@ function extractEntities(req, res, next) {
         headers: {'Content-Length': params.length},
         path: '/services/rest/0.0/'
       };
-      var entities = [];      
-      var req = http.request(options, function(res) {        
+      var entities = [];
+      var req = http.request(options, function(res) {
         var response = '';
         res.on('data', function(chunk) {
           response += chunk;
@@ -204,7 +201,7 @@ function extractEntities(req, res, next) {
             response = JSON.parse(response);
           } catch(e) {
             sendResults(pendingRequests, entities, currentService);
-          }                    
+          }
           if (response.markup && response.markup.links) {
             var links = response.markup.links;
             for (var i = 0, len1 = links.length; i < len1; i++) {
@@ -226,18 +223,18 @@ function extractEntities(req, res, next) {
                   relevance: parseFloat(entity.confidence),
                   uris: uris,
                   source: currentService
-                });                          
+                });
               }
-            }      	    
+            }
           }
           sendResults(pendingRequests, entities, currentService);
-  		  }); 		  
+        });
       }).on('error', function(e) {
-        sendResults(pendingRequests, entities, currentService);        
-      }); 
-      req.write(params);		  
+        sendResults(pendingRequests, entities, currentService);
+      });
+      req.write(params);
       req.end();
-    },  
+    },
     opencalais: function(pendingRequests) {
       var currentService = 'opencalais';
       var license = 'xxqm6vznsj42scny2tk5dvrv';
@@ -250,18 +247,18 @@ function extractEntities(req, res, next) {
                 'c:outputFormat="Application/JSON" ' +
                 'c:calculateRelevanceScore="TRUE" ' +
                 'c:omitOutputtingOriginalText="TRUE" ' +
-                'c:enableMetadataType="SocialTags">' + 
+                'c:enableMetadataType="SocialTags">' +
             '</c:processingDirectives>' +
             '<c:userDirectives ' +
                 'c:allowDistribution="FALSE" ' +
                 'c:allowSearch="FALSE" ' +
                 'c:externalID="tomayac.com" ' +
                 'c:submitter="Thomas Steiner">' +
-            '</c:userDirectives>' +                
+            '</c:userDirectives>' +
           '</c:params>';
       var params = {
           licenseID: license,
-          content: text.replace(/%/g, '%25'),        
+          content: text.replace(/%/g, '%25'),
           paramsXML: paramsXml
       };
       params = querystring.stringify(params);
@@ -270,24 +267,24 @@ function extractEntities(req, res, next) {
         method: 'POST',
         port: 80,
         path: '/enlighten/rest/'
-      };   
-      var entities = [];   
-      var req = http.request(options, function(res) {        
+      };
+      var entities = [];
+      var req = http.request(options, function(res) {
         var response = '';
         res.on('data', function(chunk) {
           response += chunk;
         });
         res.on('end', function() {
-    	    if (response.indexOf('<Error') !== -1) {
-    	      response = {};
-    	    } else {
-    	      try {
-    	        response = JSON.parse(response);
-  	        } catch(e) {
+          if (response.indexOf('<Error') !== -1) {
+            response = {};
+          } else {
+            try {
+              response = JSON.parse(response);
+            } catch(e) {
               sendResults(pendingRequests, entities, currentService);
-            }            
-  	      }          
-  	      var keys = typeof(response) === 'object' ? Object.keys(response) : [];
+            }
+          }
+          var keys = typeof(response) === 'object' ? Object.keys(response) : [];
           for (var i = 0, len = keys.length; i < len; i++) {
             var key = keys[i];
             if (key === 'doc') {
@@ -306,50 +303,50 @@ function extractEntities(req, res, next) {
                     source: currentService
                   }],
                   source: currentService
-                }); 
+                });
               }
-            }          
+            }
           }
           sendResults(pendingRequests, entities, currentService);
         });
       }).on('error', function(e) {
-        sendResults(pendingRequests, entities, currentService);        
-      }); 
+        sendResults(pendingRequests, entities, currentService);
+      });
       req.setHeader('Content-Length', params.length);
-      req.write(params);		  
+      req.write(params);
       req.end();
-    },   
+    },
     alchemyapi: function(pendingRequests) {
       var currentService = 'alchemyapi';
       var license = '6075eba18cf6fedc3ad522703b22fac10c4440a7';
       var params = {
-          apikey:	license,
-          text:	text,
-          outputMode:	'json',
+          apikey:  license,
+          text:  text,
+          outputMode:  'json',
           disambiguate: 1,
           linkedData: 1,
           coreference: 1,
           quotatioms: 1,
-          showSourceText: 0              
+          showSourceText: 0
       };
       params = querystring.stringify(params);
-      
+
       var options1 = {
         host: 'access.alchemyapi.com',
         method: 'POST',
         port: 80,
         path: '/calls/text/TextGetRankedConcepts'
       };
-      
+
       var entities = [];
-      
-      var req1 = http.request(options1, function(res1) {        
+
+      var req1 = http.request(options1, function(res1) {
         var response1 = '';
         res1.on('data', function(chunk) {
           response1 += chunk;
         });
         res1.on('end', function() {
-          
+
           var options2 = {
             host: 'access.alchemyapi.com',
             method: 'POST',
@@ -357,27 +354,27 @@ function extractEntities(req, res, next) {
             path: '/calls/text/TextGetRankedNamedEntities'
           };
 
-          var req2 = http.request(options2, function(res2) {        
+          var req2 = http.request(options2, function(res2) {
             var response2 = '';
             res2.on('data', function(chunk) {
               response2 += chunk;
             });
-            res2.on('end', function() {              
+            res2.on('end', function() {
               try {
-        	      results2 = JSON.parse(response2);
-      	      } catch(e) {
+                results2 = JSON.parse(response2);
+              } catch(e) {
                 sendResults(pendingRequests, entities, currentService);
-              }              
+              }
               try {
-        	      results1 = JSON.parse(response1);
-      	      } catch(e) {
+                results1 = JSON.parse(response1);
+              } catch(e) {
                 sendResults(pendingRequests, entities, currentService);
-              }                      	    
+              }
               // copy results2.entities over to results1.entities
-        	    results1.entities = results2.entities ? results2.entities : [];            	    
-        	    // make sure results1.concepts exists
-        	    var concepts = results1.concepts ? results1.concepts : [];
-        	    var entities1 = [];              
+              results1.entities = results2.entities ? results2.entities : [];
+              // make sure results1.concepts exists
+              var concepts = results1.concepts ? results1.concepts : [];
+              var entities1 = [];
               for (var i = 0, len1 = concepts.length; i < len1; i++) {
                 var concept = concepts[i];
                 var uris = [];
@@ -390,7 +387,7 @@ function extractEntities(req, res, next) {
                       (key === 'name') ||
                       (key === 'subType') ||
                       (key === 'website') ||
-                      (key === 'geo')) {              
+                      (key === 'geo')) {
                     continue;
                   }
                   concept[key] = decodeURIComponent(concept[key]);
@@ -405,9 +402,9 @@ function extractEntities(req, res, next) {
                     relevance: parseFloat(concept.relevance),
                     uris: uris,
                     source: currentService
-                  });          
+                  });
                 }
-              }              
+              }
               var entities2 = [];
               for (var i = 0, len1 = results1.entities.length; i < len1; i++) {
                 var entity = results1.entities[i];
@@ -425,12 +422,12 @@ function extractEntities(req, res, next) {
                       (key === 'website') ||
                       (key === 'geo')) {
                     continue;
-                  }            
+                  }
                   disambiguated[key] = decodeURIComponent(disambiguated[key]);
                   uris.push({
                     uri: disambiguated[key],
                     source: currentService
-                  });            
+                  });
                 }
                 if (uris.length > 0) {
                   entities2.push({
@@ -438,37 +435,37 @@ function extractEntities(req, res, next) {
                     relevance: parseFloat(entity.relevance),
                     uris: uris,
                     source: currentService
-                  });          
+                  });
                 }
               }
               entities = mergeEntities(entities1, entities2);
               sendResults(pendingRequests, entities, currentService);
-      		  });
+            });
           }).on('error', function(e) {
-            sendResults(pendingRequests, entities, currentService);        
-          }); 
+            sendResults(pendingRequests, entities, currentService);
+          });
           req2.setHeader('Content-Length', params.length);
-          req2.write(params);		  
+          req2.write(params);
           req2.end();
         });
       }).on('error', function(e) {
-        sendResults(pendingRequests, entities, currentService);        
-      }); 
+        sendResults(pendingRequests, entities, currentService);
+      });
       req1.setHeader('Content-Length', params.length);
-      req1.write(params);		  
-      req1.end();  
-    }    
+      req1.write(params);
+      req1.end();
+    }
   };
   if (services[service]) {
     services[service]();
-  } 
+  }
   if (service === 'combined') {
     var serviceNames = typeof(services) === 'object' ?
         Object.keys(services) : [];
     var pendingRequests = {}
     serviceNames.forEach(function(serviceName) {
       pendingRequests[serviceName] = false;
-      services[serviceName](pendingRequests); 
+      services[serviceName](pendingRequests);
     });
 
     var length = serviceNames.length;
@@ -485,31 +482,31 @@ function extractEntities(req, res, next) {
           return;
         }
       }
-      clearInterval(interval);      
+      clearInterval(interval);
       var results = pendingRequests[serviceNames[0]];
-      for (var i = 1 /* 1, yes! */; i < length; i++) {      
+      for (var i = 1 /* 1, yes! */; i < length; i++) {
         results = mergeEntities(results, pendingRequests[serviceNames[i]]);
-      }      
+      }
       sendResults(false, results, 'combined');
       pendingRequests = {};
-    }, intervalTimeout);    
+    }, intervalTimeout);
   }
-  
+
   function sendResults(pendingRequests, entities, service) {
     if (!pendingRequests) {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      if (req.query.callback) {      
-        res.send(req.query.callback + '(' + JSON.stringify(entities) + ')');      
+      if (req.query.callback) {
+        res.send(req.query.callback + '(' + JSON.stringify(entities) + ')');
       } else {
         res.send(JSON.stringify(entities));
       }
     } else {
       pendingRequests[service] = entities;
-    }     
-  }  
+    }
+  }
 }
 
-var port = process.env.PORT || 8001;
+var port = process.env.PORT || 8080;
 app.listen(port);
 console.log('node.JS running on ' + port);
